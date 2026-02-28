@@ -18,6 +18,12 @@ public:
 private:
     void setupUi();
     void applyStyleSheet();
+    void toggleTheme();
+    void updateIcons();
+
+    [[nodiscard]] QString iconPath(const QString &name) const;
+
+    bool m_isDark = true;
 
     QStackedWidget *m_pageStack       = nullptr;
 
@@ -28,7 +34,9 @@ private:
     QPushButton    *m_btnFlatpak      = nullptr;
     QPushButton    *m_btnRepository   = nullptr;
     QPushButton    *m_btnKernel       = nullptr;
+    QPushButton    *m_btnTheme        = nullptr;
+    QPushButton    *m_btnSettings     = nullptr;
 
     SearchPage     *m_searchPage      = nullptr;
-    SettingsDialog  *m_settingsDialog  = nullptr;
+    SettingsDialog *m_settingsDialog  = nullptr;
 };

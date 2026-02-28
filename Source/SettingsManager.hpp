@@ -4,10 +4,6 @@
 #include <QSettings>
 #include <QString>
 
-// SettingsManager
-// ---------------
-// Singleton. Persists all user preferences via QSettings.
-// Access via SettingsManager::instance().
 class SettingsManager : public QObject
 {
     Q_OBJECT
@@ -34,16 +30,12 @@ public:
     void setFlatpakEnabled(bool value);
 
     // General
-    bool    autoRefresh() const;
-    void    setAutoRefresh(bool value);
-    int     autoRefreshInterval() const;   // minutes
-    void    setAutoRefreshInterval(int value);
-    bool    notificationsEnabled() const;
-    void    setNotificationsEnabled(bool value);
-
-    // Backend
-    QString backend() const;               // "alpm" | "pacman"
-    void    setBackend(const QString &value);
+    bool autoRefresh() const;
+    void setAutoRefresh(bool value);
+    int  autoRefreshInterval() const;
+    void setAutoRefreshInterval(int value);
+    bool notificationsEnabled() const;
+    void setNotificationsEnabled(bool value);
 
     signals:
         void settingsChanged();

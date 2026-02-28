@@ -109,15 +109,3 @@ void SettingsManager::setNotificationsEnabled(bool value)
     m_settings.setValue("general/notifications", value);
     emit settingsChanged();
 }
-
-// ── Backend ───────────────────────────────────────────────────────────────────
-
-QString SettingsManager::backend() const
-{
-    return m_settings.value("general/backend", "alpm").toString();
-}
-void SettingsManager::setBackend(const QString &value)
-{
-    m_settings.setValue("general/backend", value);
-    emit settingsChanged();
-}

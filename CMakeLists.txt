@@ -8,11 +8,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
-
 find_package(qtermwidget6 REQUIRED)
-
-find_library(ALPM_LIBRARY  NAMES alpm   REQUIRED)
-find_path(ALPM_INCLUDE_DIR NAMES alpm.h REQUIRED)
 
 set(SOURCES
         Source/Main.cpp
@@ -30,17 +26,16 @@ set(SOURCES
         Source/UI/SettingsDialog.hpp
 )
 
-qt_add_executable(VantaPM ${SOURCES})
+qt_add_executable(VantaPM
+        ${SOURCES}
+        Resources/resources.qrc
+)
 
 target_link_libraries(VantaPM PRIVATE
         Qt6::Core
         Qt6::Gui
         Qt6::Widgets
         qtermwidget6
-        ${ALPM_LIBRARY}
 )
 
-target_include_directories(VantaPM PRIVATE
-        Source
-        ${ALPM_INCLUDE_DIR}
-)
+target_include_directories(VantaPM PRIVATE Source)

@@ -1,0 +1,38 @@
+<RCC>
+    <qresource prefix="/icons/dark">
+        <file alias="search.png">Icons/Dark/search.png</file>
+        <file alias="installed.png">Icons/Dark/installed.png</file>
+        <file alias="update.png">Icons/Dark/update.png</file>
+        <file alias="maintenance.png">Icons/Dark/maintenance.png</file>
+        <file alias="flatpak.png">Icons/Dark/flatpak.png</file>
+        <file alias="repository.png">Icons/Dark/repository.png</file>
+        <file alias="kernel.png">Icons/Dark/kernel.png</file>
+        <file alias="theme.png">Icons/Dark/theme.png</file>
+        <file alias="settings.png">Icons/Dark/settings.png</file>
+        <file alias="install.png">Icons/Dark/install.png</file>
+        <file alias="remove.png">Icons/Dark/remove.png</file>
+        <file alias="terminal.png">Icons/Dark/terminal.png</file>
+        <file alias="output.png">Icons/Dark/output.png</file>
+        <file alias="filter.png">Icons/Dark/filter.png</file>
+        <file alias="clear.png">Icons/Dark/clear.png</file>
+        <file alias="empty.png">Icons/Dark/empty.png</file>
+    </qresource>
+    <qresource prefix="/icons/light">
+        <file alias="search.png">Icons/Light/search.png</file>
+        <file alias="installed.png">Icons/Light/installed.png</file>
+        <file alias="update.png">Icons/Light/update.png</file>
+        <file alias="maintenance.png">Icons/Light/maintenance.png</file>
+        <file alias="flatpak.png">Icons/Light/flatpak.png</file>
+        <file alias="repository.png">Icons/Light/repository.png</file>
+        <file alias="kernel.png">Icons/Light/kernel.png</file>
+        <file alias="theme.png">Icons/Light/theme.png</file>
+        <file alias="settings.png">Icons/Light/settings.png</file>
+        <file alias="install.png">Icons/Light/install.png</file>
+        <file alias="remove.png">Icons/Light/remove.png</file>
+        <file alias="terminal.png">Icons/Light/terminal.png</file>
+        <file alias="output.png">Icons/Light/output.png</file>
+        <file alias="filter.png">Icons/Light/filter.png</file>
+        <file alias="clear.png">Icons/Light/clear.png</file>
+        <file alias="empty.png">Icons/Light/empty.png</file>
+    </qresource>
+</RCC>
