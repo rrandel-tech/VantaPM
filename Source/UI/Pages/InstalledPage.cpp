@@ -1,4 +1,5 @@
 #include "InstalledPage.hpp"
+#include "Backend/PacmanBackend.hpp"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -6,112 +7,45 @@
 #include <QSplitter>
 #include <QScrollBar>
 #include <QHeaderView>
-#include <QCheckBox>
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Column indices ────────────────────────────────────────────────────────────
+static constexpr int kColCheck  = 0;
+static constexpr int kColName   = 1;
+static constexpr int kColVer    = 2;
+static constexpr int kColRepo   = 3;
+static constexpr int kColDesc   = 4;
+static constexpr int kColDetail = 5;
+static constexpr int kColRemove = 6;
+static constexpr int kColCount  = 7;
 
-namespace {
-
-// Creates a fully-populated table row.
-// col0 = radio/select  col1 = pkg icon + name  col2 = version
-// col3 = repo icon     col4 = description       col5/6 = action buttons
-void addPackageRow(QTableWidget *table, int row,
-                   const QString &name,
-                   const QString &version,
-                   const QString &repo,
-                   const QString &description)
-{
-    table->insertRow(row);
-    table->setRowHeight(row, 46);
-
-    // ── Col 0 : radio-style select indicator ─────────────────────────────────
-    auto *selectWidget = new QWidget;
-    auto *selectLayout = new QHBoxLayout(selectWidget);
-    selectLayout->setContentsMargins(8, 0, 0, 0);
-    selectLayout->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
-    auto *radio = new QCheckBox;
-    radio->setObjectName("rowCheck");
-    selectLayout->addWidget(radio);
-    table->setCellWidget(row, 0, selectWidget);
-
-    // ── Col 1 : pkg icon + name ───────────────────────────────────────────────
-    auto *nameWidget = new QWidget;
-    auto *nameLayout = new QHBoxLayout(nameWidget);
-    nameLayout->setContentsMargins(6, 0, 6, 0);
-    nameLayout->setSpacing(6);
-    nameLayout->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
-
-    auto *pkgIcon = new QLabel;
-    pkgIcon->setObjectName("pkgIcon");
-    pkgIcon->setPixmap(QPixmap(":/icons/light/installed.png")
-                           .scaled(14, 14, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    auto *nameLabel = new QLabel(name);
-    nameLabel->setObjectName("pkgName");
-    nameLayout->addWidget(pkgIcon);
-    nameLayout->addWidget(nameLabel);
-    table->setCellWidget(row, 1, nameWidget);
-
-    // ── Col 2 : version ───────────────────────────────────────────────────────
-    auto *versionLabel = new QLabel(version);
-    versionLabel->setObjectName("pkgVersion");
-    versionLabel->setContentsMargins(6, 0, 6, 0);
-    versionLabel->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
-    table->setCellWidget(row, 2, versionLabel);
-
-    // ── Col 3 : repo icon ─────────────────────────────────────────────────────
-    auto *repoWidget = new QWidget;
-    auto *repoLayout = new QHBoxLayout(repoWidget);
-    repoLayout->setContentsMargins(6, 0, 6, 0);
-    repoLayout->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
-    auto *repoIcon = new QLabel;
-    repoIcon->setObjectName("repoIcon");
-    repoIcon->setPixmap(QPixmap(":/icons/light/repository.png")
-                            .scaled(14, 14, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    repoIcon->setToolTip(repo);
-    repoLayout->addWidget(repoIcon);
-    table->setCellWidget(row, 3, repoWidget);
-
-    // ── Col 4 : description ───────────────────────────────────────────────────
-    auto *descLabel = new QLabel(description);
-    descLabel->setObjectName("pkgDesc");
-    descLabel->setContentsMargins(6, 0, 6, 0);
-    descLabel->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
-    table->setCellWidget(row, 4, descLabel);
-
-    // ── Col 5 : Details button ────────────────────────────────────────────────
-    auto *btnDetails = new QPushButton("Details");
-    btnDetails->setObjectName("btnSecondary");
-    btnDetails->setFixedHeight(28);
-    btnDetails->setCursor(Qt::PointingHandCursor);
-
-    auto *detailsWrapper = new QWidget;
-    auto *detailsLayout  = new QHBoxLayout(detailsWrapper);
-    detailsLayout->setContentsMargins(4, 0, 4, 0);
-    detailsLayout->addWidget(btnDetails);
-    table->setCellWidget(row, 5, detailsWrapper);
-
-    // ── Col 6 : Remove button ─────────────────────────────────────────────────
-    auto *btnRemove = new QPushButton("Remove");
-    btnRemove->setObjectName("btnRemove");
-    btnRemove->setFixedHeight(28);
-    btnRemove->setCursor(Qt::PointingHandCursor);
-
-    auto *removeWrapper = new QWidget;
-    auto *removeLayout  = new QHBoxLayout(removeWrapper);
-    removeLayout->setContentsMargins(4, 0, 8, 0);
-    removeLayout->addWidget(btnRemove);
-    table->setCellWidget(row, 6, removeWrapper);
-}
-
-} // namespace
-
-// ── InstalledPage ─────────────────────────────────────────────────────────────
+static constexpr int kCheckWidth  = 40;
+static constexpr int kRepoWidth   = 110;
+static constexpr int kDetailWidth = 75;
+static constexpr int kRemoveWidth = 75;
 
 InstalledPage::InstalledPage(QWidget *parent)
     : QWidget(parent)
+    , m_backend(new PacmanBackend(this))
 {
     setupUi();
+
+    connect(m_backend, &PacmanBackend::queryResults, this, &InstalledPage::onQueryResults);
+    connect(m_backend, &PacmanBackend::outputLine,   this, &InstalledPage::onOutputLine);
+    connect(m_backend, &PacmanBackend::finished,     this, &InstalledPage::onFinished);
+    connect(m_backend, &PacmanBackend::startError,   this, [this](const QString &msg) {
+        appendOutput(QStringLiteral("[error] ") + msg);
+    });
 }
+
+void InstalledPage::loadPackages()
+{
+    if (m_backend->isBusy())
+        return;
+    m_currentOp = Op::Query;
+    m_backend->queryInstalledFull();
+}
+
+// ── UI setup ──────────────────────────────────────────────────────────────────
 
 void InstalledPage::setupUi()
 {
@@ -119,15 +53,14 @@ void InstalledPage::setupUi()
     rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(12);
 
-    // ── Top controls ──────────────────────────────────────────────────────────
     auto *topSection = new QWidget;
     topSection->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *topLayout = new QVBoxLayout(topSection);
     topLayout->setContentsMargins(0, 0, 0, 0);
     topLayout->setSpacing(10);
 
-    // Title row
-    auto *titleRow = new QHBoxLayout;
+    // Title
+    auto *titleRow  = new QHBoxLayout;
     auto *titleIcon = new QLabel;
     titleIcon->setPixmap(QPixmap(":/icons/light/installed.png")
                              .scaled(18, 18, Qt::KeepAspectRatio, Qt::SmoothTransformation));
@@ -140,7 +73,7 @@ void InstalledPage::setupUi()
 
     // Search bar
     auto *searchRow = new QHBoxLayout;
-    m_searchInput = new QLineEdit;
+    m_searchInput   = new QLineEdit;
     m_searchInput->setPlaceholderText("Search installed packages...");
     m_searchInput->setObjectName("searchInput");
     m_searchInput->setFixedHeight(36);
@@ -193,7 +126,7 @@ void InstalledPage::setupUi()
     splitter->setChildrenCollapsible(false);
 
     // ── Package table ─────────────────────────────────────────────────────────
-    m_table = new QTableWidget(0, 7);
+    m_table = new QTableWidget(0, kColCount);
     m_table->setObjectName("packageTable");
     m_table->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_table->setSelectionMode(QAbstractItemView::NoSelection);
@@ -205,55 +138,47 @@ void InstalledPage::setupUi()
     m_table->setFocusPolicy(Qt::NoFocus);
     m_table->horizontalHeader()->setHighlightSections(false);
     m_table->horizontalHeader()->setObjectName("pkgHeader");
-
-    // Header labels — col 0 has the master checkbox
-    auto *masterCheck = new QCheckBox;
-    masterCheck->setObjectName("rowCheck");
-
-    m_table->setHorizontalHeaderItem(0, new QTableWidgetItem(""));
-    m_table->setHorizontalHeaderItem(1, new QTableWidgetItem("Name"));
-    m_table->setHorizontalHeaderItem(2, new QTableWidgetItem("Version"));
-    m_table->setHorizontalHeaderItem(3, new QTableWidgetItem("Repository"));
-    m_table->setHorizontalHeaderItem(4, new QTableWidgetItem("Description"));
-    m_table->setHorizontalHeaderItem(5, new QTableWidgetItem(""));
-    m_table->setHorizontalHeaderItem(6, new QTableWidgetItem(""));
-
-    m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Fixed);
-    m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    m_table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    m_table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Fixed);
-    m_table->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
-    m_table->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Fixed);
-    m_table->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Fixed);
-
-    m_table->setColumnWidth(0, 48);
-    m_table->setColumnWidth(3, 60);
-    m_table->setColumnWidth(5, 100);
-    m_table->setColumnWidth(6, 100);
-
-    // Place master checkbox in header col 0
-    m_table->horizontalHeader()->setDefaultSectionSize(46);
     m_table->setCornerButtonEnabled(false);
+    m_table->setIconSize(QSize(14, 14));
 
-    populateDemoRows();
+    m_table->setHorizontalHeaderItem(kColCheck,  new QTableWidgetItem(""));
+    m_table->setHorizontalHeaderItem(kColName,   new QTableWidgetItem("Name"));
+    m_table->setHorizontalHeaderItem(kColVer,    new QTableWidgetItem("Version"));
+    m_table->setHorizontalHeaderItem(kColRepo,   new QTableWidgetItem("Repository"));
+    m_table->setHorizontalHeaderItem(kColDesc,   new QTableWidgetItem("Description"));
+    m_table->setHorizontalHeaderItem(kColDetail, new QTableWidgetItem(""));
+    m_table->setHorizontalHeaderItem(kColRemove, new QTableWidgetItem(""));
+
+    m_table->horizontalHeader()->setSectionResizeMode(kColCheck,  QHeaderView::Fixed);
+    m_table->horizontalHeader()->setSectionResizeMode(kColName,   QHeaderView::ResizeToContents);
+    m_table->horizontalHeader()->setSectionResizeMode(kColVer,    QHeaderView::ResizeToContents);
+    m_table->horizontalHeader()->setSectionResizeMode(kColRepo,   QHeaderView::Fixed);
+    m_table->horizontalHeader()->setSectionResizeMode(kColDesc,   QHeaderView::Stretch);
+    m_table->horizontalHeader()->setSectionResizeMode(kColDetail, QHeaderView::Fixed);
+    m_table->horizontalHeader()->setSectionResizeMode(kColRemove, QHeaderView::Fixed);
+
+    m_table->setColumnWidth(kColCheck,  kCheckWidth);
+    m_table->setColumnWidth(kColRepo,   kRepoWidth);
+    m_table->setColumnWidth(kColDetail, kDetailWidth);
+    m_table->setColumnWidth(kColRemove, kRemoveWidth);
 
     splitter->addWidget(m_table);
 
-    // ── Terminal output panel ─────────────────────────────────────────────────
+    // ── Output panel ─────────────────────────────────────────────────────────
     auto *outputPanel = new QWidget;
     outputPanel->setObjectName("outputPanel");
     auto *outputLayout = new QVBoxLayout(outputPanel);
     outputLayout->setContentsMargins(10, 8, 10, 8);
-    outputLayout->setSpacing(6);
+    outputLayout->setSpacing(4);
 
     auto *outputHeaderRow = new QHBoxLayout;
     m_outputIcon = new QLabel;
     m_outputIcon->setPixmap(QPixmap(":/icons/light/terminal.png")
                                 .scaled(14, 14, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    m_outputLabel = new QLabel("Terminal Output");
-    m_outputLabel->setObjectName("sectionLabel");
+    auto *outputLabel = new QLabel("Terminal Output");
+    outputLabel->setObjectName("sectionLabel");
     outputHeaderRow->addWidget(m_outputIcon);
-    outputHeaderRow->addWidget(m_outputLabel);
+    outputHeaderRow->addWidget(outputLabel);
     outputHeaderRow->addStretch();
     outputLayout->addLayout(outputHeaderRow);
 
@@ -269,29 +194,210 @@ void InstalledPage::setupUi()
     splitter->setSizes({520, 160});
 
     rootLayout->addWidget(splitter, 1);
+
+    connect(m_btnSearch,   &QPushButton::clicked,     this, &InstalledPage::onSearch);
+    connect(m_btnClear,    &QPushButton::clicked,     this, &InstalledPage::onClear);
+    connect(m_btnRemove,   &QPushButton::clicked,     this, &InstalledPage::onRemoveSelected);
+    connect(m_btnSelAll,   &QPushButton::clicked,     this, &InstalledPage::onSelectAll);
+    connect(m_btnClrSel,   &QPushButton::clicked,     this, &InstalledPage::onClearSelection);
+    connect(m_searchInput, &QLineEdit::returnPressed, this, &InstalledPage::onSearch);
 }
 
-void InstalledPage::populateDemoRows()
+// ── Table population ──────────────────────────────────────────────────────────
+
+void InstalledPage::populateTable(const QList<Package> &packages)
 {
-    struct PkgInfo { const char *name; const char *ver; const char *repo; const char *desc; };
+    const QIcon pkgIcon(m_isDark
+                            ? QStringLiteral(":/icons/light/installed.png")
+                            : QStringLiteral(":/icons/dark/installed.png"));
 
-    static constexpr PkgInfo pkgs[] = {
-        { "7zip",                "25.01-1.1",      "extra",   "" },
-        { "a52dec",              "0.8.0-2.1",      "extra",   "" },
-        { "aalib",               "1.4rc5-19.1",    "extra",   "" },
-        { "abseil-cpp",          "20250814.1-1.1", "extra",   "" },
-        { "accounts-qml-module", "0.7-6.1",        "extra",   "" },
-        { "acl",                 "2.3.2-1",        "core",    "" },
-        { "acpi",                "1.7-4",          "extra",   "" },
-        { "acpid",               "2.0.34-2",       "extra",   "" },
-    };
+    m_table->setSortingEnabled(false);
+    m_table->setUpdatesEnabled(false);
+    m_table->clearContents();
+    m_table->setRowCount(packages.size());
 
-    for (int i = 0; const auto &p : pkgs)
-        addPackageRow(m_table, i++, p.name, p.ver, p.repo, p.desc);
+    for (int row = 0; row < packages.size(); ++row) {
+        const Package &pkg = packages[row];
+        m_table->setRowHeight(row, 42);
+
+        // ── Col 0 : row checkbox ──────────────────────────────────────────────
+        auto *chkWidget = new QWidget;
+        auto *chkLayout = new QHBoxLayout(chkWidget);
+        chkLayout->setContentsMargins(0, 0, 0, 0);
+        chkLayout->setAlignment(Qt::AlignCenter);
+        auto *chk = new QCheckBox;
+        chk->setObjectName("rowCheck");
+        chkLayout->addWidget(chk);
+        m_table->setCellWidget(row, kColCheck, chkWidget);
+
+        // ── Col 1 : icon + name ───────────────────────────────────────────────
+        auto *nameItem = new QTableWidgetItem(pkgIcon, pkg.name);
+        nameItem->setFlags(Qt::ItemIsEnabled);
+        m_table->setItem(row, kColName, nameItem);
+
+        // ── Cols 2-4 : plain items ────────────────────────────────────────────
+        auto makeItem = [](const QString &text) {
+            auto *item = new QTableWidgetItem(text);
+            item->setFlags(Qt::ItemIsEnabled);
+            return item;
+        };
+        m_table->setItem(row, kColVer,  makeItem(pkg.version));
+        m_table->setItem(row, kColRepo, makeItem(pkg.repo.isEmpty()
+                                                     ? QStringLiteral("local")
+                                                     : pkg.repo));
+        m_table->setItem(row, kColDesc, makeItem(pkg.description));
+
+        // ── Col 5 : Details button ────────────────────────────────────────────
+        const QString pkgName = pkg.name;
+
+        auto *btnDetails = new QPushButton("Details");
+        btnDetails->setObjectName("btnSecondary");
+        btnDetails->setFixedSize(kDetailWidth - 8, 26);
+        btnDetails->setCursor(Qt::PointingHandCursor);
+        connect(btnDetails, &QPushButton::clicked, this, [this, pkgName]() {
+            appendOutput(QStringLiteral("--- info: ") + pkgName + " ---");
+            m_currentOp = Op::Info;
+            m_backend->infoLocal(pkgName);
+        });
+        auto *dw = new QWidget;
+        auto *dl = new QHBoxLayout(dw);
+        dl->setContentsMargins(4, 0, 4, 0);
+        dl->setSpacing(0);
+        dl->addWidget(btnDetails);
+        m_table->setCellWidget(row, kColDetail, dw);
+
+        // ── Col 6 : Remove button ─────────────────────────────────────────────
+        auto *btnRemove = new QPushButton("Remove");
+        btnRemove->setObjectName("btnRemove");
+        btnRemove->setFixedSize(kRemoveWidth - 8, 26);
+        btnRemove->setCursor(Qt::PointingHandCursor);
+        connect(btnRemove, &QPushButton::clicked, this, [this, pkgName]() {
+            appendOutput(QStringLiteral("Removing: ") + pkgName);
+            m_currentOp = Op::Remove;
+            m_backend->remove({pkgName});
+        });
+        auto *rw = new QWidget;
+        auto *rl = new QHBoxLayout(rw);
+        rl->setContentsMargins(4, 0, 4, 0);
+        rl->setSpacing(0);
+        rl->addWidget(btnRemove);
+        m_table->setCellWidget(row, kColRemove, rw);
+    }
+
+    m_table->setUpdatesEnabled(true);
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+
+void InstalledPage::applySearch(const QString &term)
+{
+    if (term.isEmpty()) {
+        populateTable(m_allPackages);
+        return;
+    }
+
+    QList<Package> filtered;
+    filtered.reserve(m_allPackages.size());
+    for (const Package &pkg : m_allPackages) {
+        if (pkg.name.contains(term, Qt::CaseInsensitive) ||
+            pkg.description.contains(term, Qt::CaseInsensitive))
+            filtered.append(pkg);
+    }
+    populateTable(filtered);
+}
+
+// ── Slots ─────────────────────────────────────────────────────────────────────
+
+void InstalledPage::onSearch()
+{
+    applySearch(m_searchInput->text().trimmed());
+}
+
+void InstalledPage::onClear()
+{
+    m_searchInput->clear();
+    populateTable(m_allPackages);
+    m_outputView->clear();
+}
+
+void InstalledPage::onRemoveSelected()
+{
+    QStringList targets;
+    for (int row = 0; row < m_table->rowCount(); ++row) {
+        auto *w   = m_table->cellWidget(row, kColCheck);
+        auto *chk = w ? w->findChild<QCheckBox *>() : nullptr;
+        if (chk && chk->isChecked()) {
+            if (auto *item = m_table->item(row, kColName))
+                targets << item->text();
+        }
+    }
+    if (targets.isEmpty())
+        return;
+
+    appendOutput(QStringLiteral("Removing: ") + targets.join(", "));
+    m_currentOp = Op::Remove;
+    m_backend->remove(targets);
+}
+
+void InstalledPage::onSelectAll()
+{
+    for (int row = 0; row < m_table->rowCount(); ++row) {
+        auto *w   = m_table->cellWidget(row, kColCheck);
+        auto *chk = w ? w->findChild<QCheckBox *>() : nullptr;
+        if (chk) chk->setChecked(true);
+    }
+}
+
+void InstalledPage::onClearSelection()
+{
+    for (int row = 0; row < m_table->rowCount(); ++row) {
+        auto *w   = m_table->cellWidget(row, kColCheck);
+        auto *chk = w ? w->findChild<QCheckBox *>() : nullptr;
+        if (chk) chk->setChecked(false);
+    }
+}
+
+void InstalledPage::onQueryResults(const QList<Package> &packages)
+{
+    m_allPackages = packages;
+    populateTable(packages);
+    appendOutput(QStringLiteral("Loaded %1 installed package(s)").arg(packages.size()));
+}
+
+void InstalledPage::onOutputLine(const QString &line)
+{
+    appendOutput(line);
+}
+
+void InstalledPage::onFinished(bool success, int exitCode)
+{
+    if (!success) {
+        appendOutput(
+            QStringLiteral("[vantapm] operation exited with code %1").arg(exitCode));
+        m_currentOp = Op::None;
+        return;
+    }
+
+    if (m_currentOp == Op::Remove) {
+        m_currentOp = Op::Query;
+        m_backend->queryInstalledFull();
+    } else {
+        m_currentOp = Op::None;
+    }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+void InstalledPage::appendOutput(const QString &line)
+{
+    m_outputView->appendPlainText(line);
+    m_outputView->verticalScrollBar()->setValue(
+        m_outputView->verticalScrollBar()->maximum());
 }
 
 void InstalledPage::updateIcons(bool isDark)
 {
+    m_isDark = isDark;
     const QString prefix = isDark ? ":/icons/light/" : ":/icons/dark/";
 
     m_btnSearch->setIcon(QIcon(prefix + "search.png"));
@@ -301,15 +407,9 @@ void InstalledPage::updateIcons(bool isDark)
     m_outputIcon->setPixmap(QPixmap(prefix + "terminal.png")
                                 .scaled(14, 14, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 
-    // Update all row pkg/repo icons
+    const QIcon pkgIcon(prefix + "installed.png");
     for (int row = 0; row < m_table->rowCount(); ++row) {
-        if (auto *w = m_table->cellWidget(row, 1))
-            if (auto *icon = w->findChild<QLabel *>("pkgIcon"))
-                icon->setPixmap(QPixmap(prefix + "installed.png")
-                                    .scaled(14, 14, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-        if (auto *w = m_table->cellWidget(row, 3))
-            if (auto *icon = w->findChild<QLabel *>("repoIcon"))
-                icon->setPixmap(QPixmap(prefix + "repository.png")
-                                    .scaled(14, 14, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        if (auto *item = m_table->item(row, kColName))
+            item->setIcon(pkgIcon);
     }
 }

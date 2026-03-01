@@ -18,14 +18,15 @@ set(SOURCES
         Source/UI/Pages/SearchPage.hpp
         Source/UI/Pages/InstalledPage.cpp
         Source/UI/Pages/InstalledPage.hpp
-        Source/UI/Widgets/Terminal.cpp
-        Source/UI/Widgets/Terminal.hpp
-        Source/UI/Widgets/TerminalWidget.cpp
-        Source/UI/Widgets/TerminalWidget.hpp
         Source/SettingsManager.cpp
         Source/SettingsManager.hpp
         Source/UI/SettingsDialog.cpp
         Source/UI/SettingsDialog.hpp
+        Source/Backend/Package.hpp
+        Source/Backend/PacmanParser.cpp
+        Source/Backend/PacmanParser.hpp
+        Source/Backend/PacmanBackend.cpp
+        Source/Backend/PacmanBackend.hpp
 )
 
 qt_add_executable(VantaPM

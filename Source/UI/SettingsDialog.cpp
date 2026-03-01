@@ -1,12 +1,10 @@
 #include "SettingsDialog.hpp"
 #include "SettingsManager.hpp"
 
-#include <QFontDatabase>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QFrame>
-#include <qtermwidget6/qtermwidget.h>
 
 SettingsDialog::SettingsDialog(QWidget *parent)
     : QDialog(parent)
@@ -100,37 +98,6 @@ void SettingsDialog::setupUi()
     m_chkNotifications = new QCheckBox("Enable Notifications");
     root->addWidget(m_chkNotifications);
 
-    root->addWidget(makeSeparator());
-
-    // ── Terminal ──────────────────────────────────────────────────────────────
-    root->addWidget(makeSectionLabel("Terminal"));
-
-    auto *fontRow   = new QHBoxLayout;
-    auto *fontLabel = new QLabel("Font:");
-    fontLabel->setObjectName("filterLabel");
-    m_comboTermFont = new QComboBox;
-    m_comboTermFont->setObjectName("filterCombo");
-    for (const QString &fam : QFontDatabase::families()) {
-        if (QFontDatabase::isFixedPitch(fam))
-            m_comboTermFont->addItem(fam);
-    }
-    fontRow->addWidget(fontLabel);
-    fontRow->addStretch();
-    fontRow->addWidget(m_comboTermFont);
-    root->addLayout(fontRow);
-
-    auto *schemeRow   = new QHBoxLayout;
-    auto *schemeLabel = new QLabel("Color Scheme:");
-    schemeLabel->setObjectName("filterLabel");
-    m_comboTermScheme = new QComboBox;
-    m_comboTermScheme->setObjectName("filterCombo");
-    for (const QString &scheme : QTermWidget::availableColorSchemes())
-        m_comboTermScheme->addItem(scheme);
-    schemeRow->addWidget(schemeLabel);
-    schemeRow->addStretch();
-    schemeRow->addWidget(m_comboTermScheme);
-    root->addLayout(schemeRow);
-
     root->addStretch();
 
     // ── Close button ──────────────────────────────────────────────────────────
@@ -143,22 +110,33 @@ void SettingsDialog::setupUi()
     btnRow->addWidget(m_btnClose);
     root->addLayout(btnRow);
 
+    // ── Connections ───────────────────────────────────────────────────────────
     connect(m_btnClose, &QPushButton::clicked, this, &SettingsDialog::onClose);
 
-    connect(m_btnDark,          &QPushButton::clicked,            this, &SettingsDialog::saveSettings);
-    connect(m_btnLight,         &QPushButton::clicked,            this, &SettingsDialog::saveSettings);
-    connect(m_chkAur,           &QCheckBox::checkStateChanged,    this, &SettingsDialog::saveSettings);
-    connect(m_chkFlatpak,       &QCheckBox::checkStateChanged,    this, &SettingsDialog::saveSettings);
-    connect(m_chkAutoRefresh,   &QCheckBox::checkStateChanged,    this, &SettingsDialog::saveSettings);
-    connect(m_chkNotifications, &QCheckBox::checkStateChanged,    this, &SettingsDialog::saveSettings);
-    connect(m_spinInterval,     &QSpinBox::valueChanged,          this, &SettingsDialog::saveSettings);
-    connect(m_comboTermFont,    &QComboBox::currentIndexChanged,  this, &SettingsDialog::saveSettings);
-    connect(m_comboTermScheme,  &QComboBox::currentIndexChanged,  this, &SettingsDialog::saveSettings);
+    // Theme buttons emit themeChanged immediately so MainWindow reacts live
+    connect(m_btnDark,  &QPushButton::clicked, this, &SettingsDialog::onThemeToggled);
+    connect(m_btnLight, &QPushButton::clicked, this, &SettingsDialog::onThemeToggled);
+
+    // All other controls save on change
+    connect(m_chkAur,           &QCheckBox::checkStateChanged, this, &SettingsDialog::saveSettings);
+    connect(m_chkFlatpak,       &QCheckBox::checkStateChanged, this, &SettingsDialog::saveSettings);
+    connect(m_chkAutoRefresh,   &QCheckBox::checkStateChanged, this, &SettingsDialog::saveSettings);
+    connect(m_chkNotifications, &QCheckBox::checkStateChanged, this, &SettingsDialog::saveSettings);
+    connect(m_spinInterval,     &QSpinBox::valueChanged,       this, &SettingsDialog::saveSettings);
 }
 
 void SettingsDialog::loadSettings()
 {
     auto &s = SettingsManager::instance();
+
+    // Block signals while loading so we don't trigger saves or themeChanged
+    const QSignalBlocker b1(m_btnDark);
+    const QSignalBlocker b2(m_btnLight);
+    const QSignalBlocker b3(m_chkAur);
+    const QSignalBlocker b4(m_chkFlatpak);
+    const QSignalBlocker b5(m_chkAutoRefresh);
+    const QSignalBlocker b6(m_spinInterval);
+    const QSignalBlocker b7(m_chkNotifications);
 
     m_btnDark->setChecked(s.theme() == "dark");
     m_btnLight->setChecked(s.theme() == "light");
@@ -169,26 +147,32 @@ void SettingsDialog::loadSettings()
     m_chkAutoRefresh->setChecked(s.autoRefresh());
     m_spinInterval->setValue(s.autoRefreshInterval());
     m_chkNotifications->setChecked(s.notificationsEnabled());
-
-    const int fontIdx = m_comboTermFont->findText(s.terminalFont());
-    m_comboTermFont->setCurrentIndex(fontIdx >= 0 ? fontIdx : 0);
-
-    const int schemeIdx = m_comboTermScheme->findText(s.terminalColorScheme());
-    m_comboTermScheme->setCurrentIndex(schemeIdx >= 0 ? schemeIdx : 0);
 }
 
 void SettingsDialog::saveSettings()
 {
     auto &s = SettingsManager::instance();
 
-    s.setTheme(m_btnDark->isChecked() ? "dark" : "light");
     s.setAurEnabled(m_chkAur->isChecked());
     s.setFlatpakEnabled(m_chkFlatpak->isChecked());
     s.setAutoRefresh(m_chkAutoRefresh->isChecked());
     s.setAutoRefreshInterval(m_spinInterval->value());
     s.setNotificationsEnabled(m_chkNotifications->isChecked());
-    s.setTerminalFont(m_comboTermFont->currentText());
-    s.setTerminalColorScheme(m_comboTermScheme->currentText());
+}
+
+void SettingsDialog::onThemeToggled()
+{
+    const QString newTheme = m_btnDark->isChecked() ? "dark" : "light";
+    SettingsManager::instance().setTheme(newTheme);
+    emit themeChanged(newTheme);
+}
+
+void SettingsDialog::syncTheme(bool isDark)
+{
+    const QSignalBlocker b1(m_btnDark);
+    const QSignalBlocker b2(m_btnLight);
+    m_btnDark->setChecked(isDark);
+    m_btnLight->setChecked(!isDark);
 }
 
 void SettingsDialog::onClose()

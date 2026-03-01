@@ -1,9 +1,16 @@
 #include "SettingsManager.hpp"
 
+#include <QProcess>
+
 SettingsManager::SettingsManager(QObject *parent)
     : QObject(parent)
     , m_settings("VantaPM", "VantaPM")
 {
+    m_refreshTimer.setSingleShot(false);
+    connect(&m_refreshTimer, &QTimer::timeout,
+            this, &SettingsManager::autoRefreshTriggered);
+
+    applyAutoRefresh();
 }
 
 SettingsManager &SettingsManager::instance()
@@ -18,41 +25,12 @@ QString SettingsManager::theme() const
 {
     return m_settings.value("appearance/theme", "dark").toString();
 }
+
 void SettingsManager::setTheme(const QString &value)
 {
+    if (theme() == value)
+        return;
     m_settings.setValue("appearance/theme", value);
-    emit settingsChanged();
-}
-
-// ── Terminal ──────────────────────────────────────────────────────────────────
-
-QString SettingsManager::terminalFont() const
-{
-    return m_settings.value("terminal/font", "Adwaita Mono").toString();
-}
-void SettingsManager::setTerminalFont(const QString &value)
-{
-    m_settings.setValue("terminal/font", value);
-    emit settingsChanged();
-}
-
-int SettingsManager::terminalFontSize() const
-{
-    return m_settings.value("terminal/fontSize", 11).toInt();
-}
-void SettingsManager::setTerminalFontSize(int value)
-{
-    m_settings.setValue("terminal/fontSize", value);
-    emit settingsChanged();
-}
-
-QString SettingsManager::terminalColorScheme() const
-{
-    return m_settings.value("terminal/colorScheme", "Linux").toString();
-}
-void SettingsManager::setTerminalColorScheme(const QString &value)
-{
-    m_settings.setValue("terminal/colorScheme", value);
     emit settingsChanged();
 }
 
@@ -62,6 +40,7 @@ bool SettingsManager::aurEnabled() const
 {
     return m_settings.value("features/aur", true).toBool();
 }
+
 void SettingsManager::setAurEnabled(bool value)
 {
     m_settings.setValue("features/aur", value);
@@ -72,6 +51,7 @@ bool SettingsManager::flatpakEnabled() const
 {
     return m_settings.value("features/flatpak", true).toBool();
 }
+
 void SettingsManager::setFlatpakEnabled(bool value)
 {
     m_settings.setValue("features/flatpak", value);
@@ -84,9 +64,11 @@ bool SettingsManager::autoRefresh() const
 {
     return m_settings.value("general/autoRefresh", false).toBool();
 }
+
 void SettingsManager::setAutoRefresh(bool value)
 {
     m_settings.setValue("general/autoRefresh", value);
+    applyAutoRefresh();
     emit settingsChanged();
 }
 
@@ -94,9 +76,11 @@ int SettingsManager::autoRefreshInterval() const
 {
     return m_settings.value("general/autoRefreshInterval", 30).toInt();
 }
+
 void SettingsManager::setAutoRefreshInterval(int value)
 {
     m_settings.setValue("general/autoRefreshInterval", value);
+    applyAutoRefresh();
     emit settingsChanged();
 }
 
@@ -104,8 +88,43 @@ bool SettingsManager::notificationsEnabled() const
 {
     return m_settings.value("general/notifications", true).toBool();
 }
+
 void SettingsManager::setNotificationsEnabled(bool value)
 {
     m_settings.setValue("general/notifications", value);
     emit settingsChanged();
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+void SettingsManager::notify(const QString &summary,
+                             const QString &body,
+                             const QString &urgency) const
+{
+    if (!notificationsEnabled())
+        return;
+
+    // notify-send is part of libnotify — standard on most Linux desktops.
+    // We fire-and-forget via QProcess::startDetached; no need to track the PID.
+    QStringList args;
+    args << QStringLiteral("--app-name=VantaPM")
+         << QStringLiteral("--urgency=") + urgency
+         << summary;
+
+    if (!body.isEmpty())
+        args << body;
+
+    QProcess::startDetached(QStringLiteral("/usr/bin/notify-send"), args);
+}
+
+// ── Private ───────────────────────────────────────────────────────────────────
+
+void SettingsManager::applyAutoRefresh()
+{
+    m_refreshTimer.stop();
+    if (autoRefresh()) {
+        const int ms = autoRefreshInterval() * 60 * 1000;
+        m_refreshTimer.setInterval(ms);
+        m_refreshTimer.start();
+    }
 }
