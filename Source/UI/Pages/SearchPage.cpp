@@ -27,9 +27,16 @@ void SearchPage::setupUi()
     topLayout->setSpacing(10);
 
     // Title
+    auto *titleRow = new QHBoxLayout;
+    auto *titleIcon = new QLabel;
+    titleIcon->setPixmap(QPixmap(":/icons/light/search.png")
+                             .scaled(18, 18, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     auto *pageTitle = new QLabel("Search Packages");
     pageTitle->setObjectName("pageTitle");
-    topLayout->addWidget(pageTitle);
+    titleRow->addWidget(titleIcon);
+    titleRow->addWidget(pageTitle);
+    titleRow->addStretch();
+    topLayout->addLayout(titleRow);
 
     // Search bar
     auto *searchRow = new QHBoxLayout;

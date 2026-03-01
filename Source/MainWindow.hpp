@@ -5,6 +5,7 @@
 #include <QPushButton>
 
 class SearchPage;
+class InstalledPage;
 class SettingsDialog;
 
 class MainWindow : public QMainWindow
@@ -38,5 +39,6 @@ private:
     QPushButton    *m_btnSettings     = nullptr;
 
     SearchPage     *m_searchPage      = nullptr;
+    InstalledPage  *m_installedPage   = nullptr;
     SettingsDialog *m_settingsDialog  = nullptr;
 };

@@ -16,6 +16,8 @@ set(SOURCES
         Source/MainWindow.hpp
         Source/UI/Pages/SearchPage.cpp
         Source/UI/Pages/SearchPage.hpp
+        Source/UI/Pages/InstalledPage.cpp
+        Source/UI/Pages/InstalledPage.hpp
         Source/UI/Widgets/Terminal.cpp
         Source/UI/Widgets/Terminal.hpp
         Source/UI/Widgets/TerminalWidget.cpp
