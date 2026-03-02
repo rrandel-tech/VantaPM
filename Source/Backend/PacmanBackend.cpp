@@ -23,8 +23,6 @@ void PacmanBackend::queryInstalled()
 
 void PacmanBackend::queryInstalledFull()
 {
-    // pacman -Qi with no arguments queries all installed packages at once.
-    // Output is a series of key:value blocks separated by blank lines.
     run({kPacman, "-Qi"}, false, OutputMode::QueryInfo);
 }
 
@@ -46,6 +44,22 @@ void PacmanBackend::infoLocal(const QString &package)
 void PacmanBackend::infoSync(const QString &package)
 {
     run({kPacman, "-Si", package}, false, OutputMode::Raw);
+}
+
+// checkUpdates: sync databases via pkexec (triggers polkit auth prompt),
+// then immediately query upgradable packages with full version info.
+// We chain the two operations: sync first (privileged), then -Qu (unprivileged).
+// To keep it simple we run a single pkexec bash -c invocation that does both
+// and emits the -Qu output for parsing.
+void PacmanBackend::checkUpdates()
+{
+    // Run: pkexec /bin/bash -c "pacman -Sy && pacman -Qu"
+    // The -Sy output goes to terminal (via outputLine), the -Qu lines are
+    // captured in m_fullBuf and parsed as UpgradableFull on completion.
+    run({kPkexec, "/bin/bash", "-c",
+         QStringLiteral("/usr/bin/pacman -Sy && /usr/bin/pacman -Qu")},
+        false,   // already privileged via pkexec in argv
+        OutputMode::UpgradableFull);
 }
 
 // ── Write operations ──────────────────────────────────────────────────────────
@@ -142,7 +156,9 @@ void PacmanBackend::onFinished(int exitCode, QProcess::ExitStatus status)
         m_lineBuf.clear();
     }
 
-    const bool ok = (status == QProcess::NormalExit && exitCode == 0);
+    // exit code 1 from pacman -Qu just means "nothing to upgrade" — treat as success
+    const bool ok = (status == QProcess::NormalExit)
+                    && (exitCode == 0 || (m_outputMode == OutputMode::UpgradableFull && exitCode == 1));
 
     if (ok) {
         switch (m_outputMode) {
@@ -157,6 +173,9 @@ void PacmanBackend::onFinished(int exitCode, QProcess::ExitStatus status)
                 break;
             case OutputMode::Upgradable:
                 emit upgradableResults(PacmanParser::parseUpgradable(m_fullBuf));
+                break;
+            case OutputMode::UpgradableFull:
+                emit upgradablePackages(PacmanParser::parseUpgradableFull(m_fullBuf));
                 break;
             case OutputMode::Raw:
                 break;

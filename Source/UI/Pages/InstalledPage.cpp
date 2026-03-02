@@ -23,26 +23,41 @@ static constexpr int kRepoWidth   = 110;
 static constexpr int kDetailWidth = 75;
 static constexpr int kRemoveWidth = 75;
 
+// ── Construction ──────────────────────────────────────────────────────────────
+
 InstalledPage::InstalledPage(QWidget *parent)
     : QWidget(parent)
-    , m_backend(new PacmanBackend(this))
+    , m_fastBackend(new PacmanBackend(this))
+    , m_fullBackend(new PacmanBackend(this))
 {
     setupUi();
 
-    connect(m_backend, &PacmanBackend::queryResults, this, &InstalledPage::onQueryResults);
-    connect(m_backend, &PacmanBackend::outputLine,   this, &InstalledPage::onOutputLine);
-    connect(m_backend, &PacmanBackend::finished,     this, &InstalledPage::onFinished);
-    connect(m_backend, &PacmanBackend::startError,   this, [this](const QString &msg) {
+    // Fast backend: pacman -Q — name + version only, results in < 100 ms
+    connect(m_fastBackend, &PacmanBackend::queryResults,
+            this, &InstalledPage::onFastQueryResults);
+    connect(m_fastBackend, &PacmanBackend::outputLine,
+            this, &InstalledPage::onOutputLine);
+    connect(m_fastBackend, &PacmanBackend::finished,
+            this, &InstalledPage::onFinished);
+    connect(m_fastBackend, &PacmanBackend::startError, this, [this](const QString &msg) {
+        appendOutput(QStringLiteral("[error] ") + msg);
+    });
+
+    // Full backend: pacman -Qi — repo + description, fires after fast is done
+    connect(m_fullBackend, &PacmanBackend::queryResults,
+            this, &InstalledPage::onFullQueryResults);
+    connect(m_fullBackend, &PacmanBackend::startError, this, [this](const QString &msg) {
         appendOutput(QStringLiteral("[error] ") + msg);
     });
 }
 
 void InstalledPage::loadPackages()
 {
-    if (m_backend->isBusy())
+    if (m_fastBackend->isBusy() || m_fullBackend->isBusy())
         return;
-    m_currentOp = Op::Query;
-    m_backend->queryInstalledFull();
+    m_currentOp = Op::FastQuery;
+    // Phase 1: get name+version list immediately, populate table with that
+    m_fastBackend->queryInstalled();
 }
 
 // ── UI setup ──────────────────────────────────────────────────────────────────
@@ -204,6 +219,8 @@ void InstalledPage::setupUi()
 }
 
 // ── Table population ──────────────────────────────────────────────────────────
+// Full rebuild — only called for fast query results (name+version).
+// Keeps widget count minimal: checkbox + 2 buttons per row = 3 widgets each.
 
 void InstalledPage::populateTable(const QList<Package> &packages)
 {
@@ -220,7 +237,7 @@ void InstalledPage::populateTable(const QList<Package> &packages)
         const Package &pkg = packages[row];
         m_table->setRowHeight(row, 42);
 
-        // ── Col 0 : row checkbox ──────────────────────────────────────────────
+        // ── Col 0 : checkbox ──────────────────────────────────────────────────
         auto *chkWidget = new QWidget;
         auto *chkLayout = new QHBoxLayout(chkWidget);
         chkLayout->setContentsMargins(0, 0, 0, 0);
@@ -235,17 +252,15 @@ void InstalledPage::populateTable(const QList<Package> &packages)
         nameItem->setFlags(Qt::ItemIsEnabled);
         m_table->setItem(row, kColName, nameItem);
 
-        // ── Cols 2-4 : plain items ────────────────────────────────────────────
+        // ── Cols 2-4 : plain items (repo/desc initially empty) ────────────────
         auto makeItem = [](const QString &text) {
             auto *item = new QTableWidgetItem(text);
             item->setFlags(Qt::ItemIsEnabled);
             return item;
         };
         m_table->setItem(row, kColVer,  makeItem(pkg.version));
-        m_table->setItem(row, kColRepo, makeItem(pkg.repo.isEmpty()
-                                                     ? QStringLiteral("local")
-                                                     : pkg.repo));
-        m_table->setItem(row, kColDesc, makeItem(pkg.description));
+        m_table->setItem(row, kColRepo, makeItem(QString()));
+        m_table->setItem(row, kColDesc, makeItem(QString()));
 
         // ── Col 5 : Details button ────────────────────────────────────────────
         const QString pkgName = pkg.name;
@@ -255,9 +270,9 @@ void InstalledPage::populateTable(const QList<Package> &packages)
         btnDetails->setFixedSize(kDetailWidth - 8, 26);
         btnDetails->setCursor(Qt::PointingHandCursor);
         connect(btnDetails, &QPushButton::clicked, this, [this, pkgName]() {
-            appendOutput(QStringLiteral("--- info: ") + pkgName + " ---");
             m_currentOp = Op::Info;
-            m_backend->infoLocal(pkgName);
+            appendOutput(QStringLiteral("--- info: ") + pkgName + " ---");
+            m_fastBackend->infoLocal(pkgName);
         });
         auto *dw = new QWidget;
         auto *dl = new QHBoxLayout(dw);
@@ -274,7 +289,7 @@ void InstalledPage::populateTable(const QList<Package> &packages)
         connect(btnRemove, &QPushButton::clicked, this, [this, pkgName]() {
             appendOutput(QStringLiteral("Removing: ") + pkgName);
             m_currentOp = Op::Remove;
-            m_backend->remove({pkgName});
+            m_fastBackend->remove({pkgName});
         });
         auto *rw = new QWidget;
         auto *rl = new QHBoxLayout(rw);
@@ -287,12 +302,60 @@ void InstalledPage::populateTable(const QList<Package> &packages)
     m_table->setUpdatesEnabled(true);
 }
 
+// ── Patch repo/description into existing rows ─────────────────────────────────
+// Called when the full query finishes. Does NOT rebuild the table —
+// just writes text into the existing QTableWidgetItems.
+
+void InstalledPage::patchTableDetails(const QList<Package> &packages)
+{
+    // Build a name → Package map for O(1) lookup
+    QHash<QString, const Package *> byName;
+    byName.reserve(packages.size());
+    for (const Package &pkg : packages)
+        byName.insert(pkg.name, &pkg);
+
+    m_table->setUpdatesEnabled(false);
+
+    for (int row = 0; row < m_table->rowCount(); ++row) {
+        auto *nameItem = m_table->item(row, kColName);
+        if (!nameItem)
+            continue;
+
+        auto it = byName.constFind(nameItem->text());
+        if (it == byName.constEnd())
+            continue;
+
+        const Package *pkg = it.value();
+
+        if (auto *repoItem = m_table->item(row, kColRepo))
+            repoItem->setText(pkg->repo.isEmpty()
+                                  ? QStringLiteral("local")
+                                  : pkg->repo);
+
+        if (auto *descItem = m_table->item(row, kColDesc))
+            descItem->setText(pkg->description);
+
+        // Patch the in-memory list too so search works on descriptions
+        // Find and update the corresponding entry in m_allPackages
+        for (Package &ap : m_allPackages) {
+            if (ap.name == pkg->name) {
+                ap.repo        = pkg->repo;
+                ap.description = pkg->description;
+                break;
+            }
+        }
+    }
+
+    m_table->setUpdatesEnabled(true);
+}
+
 // ── Search ────────────────────────────────────────────────────────────────────
 
 void InstalledPage::applySearch(const QString &term)
 {
     if (term.isEmpty()) {
         populateTable(m_allPackages);
+        emit statusMessage(QStringLiteral("  Found %1 installed package(s)").arg(m_allPackages.size()));
         return;
     }
 
@@ -304,6 +367,7 @@ void InstalledPage::applySearch(const QString &term)
             filtered.append(pkg);
     }
     populateTable(filtered);
+    emit statusMessage(QStringLiteral("  Found %1 matching package(s)").arg(filtered.size()));
 }
 
 // ── Slots ─────────────────────────────────────────────────────────────────────
@@ -336,7 +400,7 @@ void InstalledPage::onRemoveSelected()
 
     appendOutput(QStringLiteral("Removing: ") + targets.join(", "));
     m_currentOp = Op::Remove;
-    m_backend->remove(targets);
+    m_fastBackend->remove(targets);
 }
 
 void InstalledPage::onSelectAll()
@@ -357,16 +421,32 @@ void InstalledPage::onClearSelection()
     }
 }
 
-void InstalledPage::onQueryResults(const QList<Package> &packages)
+void InstalledPage::onFastQueryResults(const QList<Package> &packages)
 {
     m_allPackages = packages;
     populateTable(packages);
-    appendOutput(QStringLiteral("Loaded %1 installed package(s)").arg(packages.size()));
+    emit statusMessage(QStringLiteral("  Found %1 installed package(s)").arg(packages.size()));
+    // Phase 2: kick off the full query in the background now that the table
+    // is already visible. The user sees the list immediately; repo/description
+    // trickle in a second or two later without any visible freeze.
+    if (!m_fullBackend->isBusy()) {
+        m_currentOp = Op::FullQuery;
+        m_fullBackend->queryInstalledFull();
+    }
+}
+
+void InstalledPage::onFullQueryResults(const QList<Package> &packages)
+{
+    patchTableDetails(packages);
+    m_currentOp = Op::None;
 }
 
 void InstalledPage::onOutputLine(const QString &line)
 {
-    appendOutput(line);
+    // Only route to the output pane during user-initiated operations.
+    // Suppress the noise from background pacman -Q / -Qi loads.
+    if (m_currentOp == Op::Remove || m_currentOp == Op::Info)
+        appendOutput(line);
 }
 
 void InstalledPage::onFinished(bool success, int exitCode)
@@ -379,8 +459,9 @@ void InstalledPage::onFinished(bool success, int exitCode)
     }
 
     if (m_currentOp == Op::Remove) {
-        m_currentOp = Op::Query;
-        m_backend->queryInstalledFull();
+        // After a remove, restart the two-phase load
+        m_currentOp = Op::FastQuery;
+        m_fastBackend->queryInstalled();
     } else {
         m_currentOp = Op::None;
     }

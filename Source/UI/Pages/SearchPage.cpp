@@ -567,6 +567,7 @@ void SearchPage::onSearchResults(const QList<Package> &packages)
 {
     m_allResults = packages;
     applyFilters();
+    emit statusMessage(QStringLiteral("  Found %1 package(s)").arg(packages.size()));
     appendOutput(QStringLiteral("Found %1 package(s)").arg(packages.size()));
 }
 

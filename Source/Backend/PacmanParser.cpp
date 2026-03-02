@@ -51,7 +51,6 @@ QList<Package> parseSearch(const QString &raw)
 }
 
 // ── parseQuery ────────────────────────────────────────────────────────────────
-// Used for pacman -Q / -Qe which only emit "name version" per line.
 
 QList<Package> parseQuery(const QString &raw)
 {
@@ -77,16 +76,11 @@ QList<Package> parseQuery(const QString &raw)
 }
 
 // ── parseQueryInfo ────────────────────────────────────────────────────────────
-// Parses the output of `pacman -Qi` for one or many packages.
-// Blocks are delimited by a blank line followed by a "Name" key.
-// We split on double-newline boundaries to separate blocks then reuse parseInfo.
 
 QList<Package> parseQueryInfo(const QString &raw)
 {
     QList<Package> results;
 
-    // Split into blocks separated by one or more blank lines.
-    // Each block starts with "Name            : ..."
     static const QRegularExpression blockSep(QStringLiteral("\\n{2,}"));
     const QStringList blocks = raw.split(blockSep, Qt::SkipEmptyParts);
 
@@ -103,28 +97,56 @@ QList<Package> parseQueryInfo(const QString &raw)
     return results;
 }
 
-// ── parseUpgradable ───────────────────────────────────────────────────────────
+// ── parseUpgradableFull ───────────────────────────────────────────────────────
+// Parses `pacman -Qu` output.
+// Each line: "name currentver -> newver"
+// Example:   "linux 6.8.1.arch1-1 -> 6.8.2.arch1-1"
 
-QStringList parseUpgradable(const QString &raw)
+QList<Package> parseUpgradableFull(const QString &raw)
 {
-    QStringList names;
+    QList<Package> results;
+
+    static const QRegularExpression lineRe(
+        QStringLiteral("^(\\S+)\\s+(\\S+)\\s+->\\s+(\\S+)$"));
 
     for (const QString &line : raw.split('\n')) {
         const QString trimmed = line.trimmed();
         if (trimmed.isEmpty())
             continue;
 
-        // "name oldver -> newver"
+        const auto m = lineRe.match(trimmed);
+        if (!m.hasMatch())
+            continue;
+
+        Package pkg;
+        pkg.name       = m.captured(1);
+        pkg.version    = m.captured(2);
+        pkg.newVersion = m.captured(3);
+        pkg.upgradable = true;
+        pkg.installed  = true;
+        results.append(pkg);
+    }
+
+    return results;
+}
+
+// ── parseUpgradable (names only, legacy) ─────────────────────────────────────
+
+QStringList parseUpgradable(const QString &raw)
+{
+    QStringList names;
+    for (const QString &line : raw.split('\n')) {
+        const QString trimmed = line.trimmed();
+        if (trimmed.isEmpty())
+            continue;
         const int sp = trimmed.indexOf(' ');
         if (sp != -1)
             names.append(trimmed.left(sp));
     }
-
     return names;
 }
 
 // ── parseInfo ─────────────────────────────────────────────────────────────────
-// Parses a single key : value block (pacman -Qi or -Si for one package).
 
 Package parseInfo(const QString &raw)
 {

@@ -12,16 +12,28 @@ find_package(qtermwidget6 REQUIRED)
 
 set(SOURCES
         Source/Main.cpp
+
         Source/MainWindow.cpp
         Source/MainWindow.hpp
-        Source/UI/Pages/SearchPage.cpp
-        Source/UI/Pages/SearchPage.hpp
-        Source/UI/Pages/InstalledPage.cpp
-        Source/UI/Pages/InstalledPage.hpp
+
         Source/SettingsManager.cpp
         Source/SettingsManager.hpp
+
         Source/UI/SettingsDialog.cpp
         Source/UI/SettingsDialog.hpp
+
+        Source/UI/Pages/SearchPage.cpp
+        Source/UI/Pages/SearchPage.hpp
+
+        Source/UI/Pages/InstalledPage.cpp
+        Source/UI/Pages/InstalledPage.hpp
+
+        Source/UI/Pages/UpdatePage.cpp
+        Source/UI/Pages/UpdatePage.hpp
+
+        Source/UI/UpdateConfirmDialog.cpp
+        Source/UI/UpdateConfirmDialog.hpp
+
         Source/Backend/Package.hpp
         Source/Backend/PacmanParser.cpp
         Source/Backend/PacmanParser.hpp

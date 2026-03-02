@@ -25,6 +25,9 @@ public:
 
     void updateIcons(bool isDark);
 
+signals:
+    void statusMessage(const QString &message);
+
 private slots:
     void onSearch();
     void onClear();

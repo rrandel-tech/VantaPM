@@ -7,16 +7,6 @@
 #include <QStringList>
 #include <QProcess>
 
-// PacmanBackend
-// -------------
-// Async wrapper around the pacman binary.
-//
-// Read-only operations  → run directly as the current user.
-// Write operations      → run under pkexec; the polkit agent prompts for auth.
-//
-// All output is emitted line-by-line via outputLine().
-// Never calls system(). Never interpolates user input into a shell string.
-
 class PacmanBackend : public QObject
 {
     Q_OBJECT
@@ -26,46 +16,39 @@ public:
 
     // ── Read-only queries ─────────────────────────────────────────────────────
     void search(const QString &term);
-
-    // Fast: emits queryResults with name+version only (no repo/description)
     void queryInstalled();
-
-    // Full: runs `pacman -Qi` on all installed packages.
-    // Slower but populates repo and description.
-    // Emits queryResults with complete Package structs.
     void queryInstalledFull();
-
     void queryExplicit();
     void queryUpgradable();
     void infoLocal(const QString &package);
     void infoSync(const QString &package);
 
-    // ── Write operations (pkexec → polkit auth prompt) ────────────────────────
+    // Sync databases with pkexec (prompts polkit) then emit upgradablePackages
+    // with full current+new version info.
+    void checkUpdates();
+
+    // ── Write operations (pkexec → polkit auth) ───────────────────────────────
     void install(const QStringList &packages);
     void remove(const QStringList &packages);
     void sysUpgrade();
     void syncDatabases();
 
-    // True while a child process is running
     bool isBusy() const;
 
-signals:
-    // One complete stdout/stderr line at a time
-    void outputLine(const QString &line);
-
-    // Emitted when the process exits
+    signals:
+        void outputLine(const QString &line);
     void finished(bool success, int exitCode);
-
-    // Emitted if the process cannot be started
     void startError(const QString &message);
 
-    // Parsed signals
     void searchResults(const QList<Package> &packages);
     void queryResults(const QList<Package> &packages);
     void upgradableResults(const QStringList &packageNames);
 
+    // Emitted by checkUpdates() with full old+new version info
+    void upgradablePackages(const QList<Package> &packages);
+
 private:
-    enum class OutputMode { Raw, Search, Query, QueryInfo, Upgradable };
+    enum class OutputMode { Raw, Search, Query, QueryInfo, Upgradable, UpgradableFull };
 
     void run(const QStringList &argv, bool withPrivilege,
              OutputMode mode = OutputMode::Raw);

@@ -6,6 +6,7 @@
 
 class SearchPage;
 class InstalledPage;
+class UpdatePage;
 class SettingsDialog;
 
 class MainWindow : public QMainWindow
@@ -40,5 +41,6 @@ private:
 
     SearchPage     *m_searchPage      = nullptr;
     InstalledPage  *m_installedPage   = nullptr;
+    UpdatePage     *m_updatePage       = nullptr;
     SettingsDialog *m_settingsDialog  = nullptr;
 };
