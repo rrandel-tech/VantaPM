@@ -2,6 +2,7 @@
 #include "UI/Pages/SearchPage.hpp"
 #include "UI/Pages/InstalledPage.hpp"
 #include "UI/Pages/UpdatePage.hpp"
+#include "UI/Pages/MaintenancePage.hpp"
 #include "UI/SettingsDialog.hpp"
 #include "SettingsManager.hpp"
 
@@ -29,16 +30,23 @@ MainWindow::MainWindow(QWidget *parent)
     statusBar()->showMessage("  Ready");
 
     // Status bar — each page reports its own message
-    connect(m_searchPage,   &SearchPage::statusMessage,
+    connect(m_searchPage, &SearchPage::statusMessage,
             this, [this](const QString &msg) { statusBar()->showMessage(msg); });
+
     connect(m_installedPage, &InstalledPage::statusMessage,
             this, [this](const QString &msg) {
-        // Only update the status bar if Installed is the currently visible page
         if (m_pageStack->currentIndex() == 1)
             statusBar()->showMessage(msg);
     });
-    connect(m_updatePage,   &UpdatePage::statusMessage,
+
+    connect(m_updatePage, &UpdatePage::statusMessage,
             this, [this](const QString &msg) { statusBar()->showMessage(msg); });
+
+    connect(m_maintenancePage, &MaintenancePage::statusMessage,
+            this, [this](const QString &msg) {
+        if (m_pageStack->currentIndex() == 3)
+            statusBar()->showMessage(msg);
+    });
 
     // When the settings dialog switches theme, apply it live
     connect(m_settingsDialog, &SettingsDialog::themeChanged,
@@ -48,6 +56,8 @@ MainWindow::MainWindow(QWidget *parent)
         updateIcons();
         m_searchPage->updateIcons(m_isDark);
         m_installedPage->updateIcons(m_isDark);
+        m_updatePage->updateIcons(m_isDark);
+        m_maintenancePage->updateIcons(m_isDark);
     });
 
     // Auto-refresh: re-query the installed list on each timer tick
@@ -60,7 +70,6 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // Defer the initial package load until after the event loop starts
-    // so the window is fully painted before pacman is invoked.
     QTimer::singleShot(0, this, [this]() {
         m_installedPage->loadPackages();
     });
@@ -145,7 +154,7 @@ void MainWindow::setupUi()
     m_pageStack = new QStackedWidget;
 
     m_searchPage = new SearchPage;
-    m_pageStack->addWidget(m_searchPage);          // index 0
+    m_pageStack->addWidget(m_searchPage);           // index 0
 
     m_installedPage = new InstalledPage;
     m_pageStack->addWidget(m_installedPage);        // index 1
@@ -153,7 +162,11 @@ void MainWindow::setupUi()
     m_updatePage = new UpdatePage;
     m_pageStack->addWidget(m_updatePage);           // index 2
 
-    for (int i = 3; i <= 6; ++i) {
+    m_maintenancePage = new MaintenancePage;
+    m_pageStack->addWidget(m_maintenancePage);      // index 3
+
+    // Stub pages for Flatpak (4), Repository (5), Kernel (6)
+    for (int i = 4; i <= 6; ++i) {
         auto *stub = new QWidget;
         auto *l    = new QVBoxLayout(stub);
         auto *lbl  = new QLabel("Coming soon");
@@ -171,8 +184,8 @@ void MainWindow::setupUi()
     rootLayout->addWidget(contentWrapper, 1);
 
     const QList<QPushButton *> navBtns = {
-        m_btnSearch, m_btnInstalled, m_btnSysUpdate,
-        m_btnMaintenance, m_btnFlatpak, m_btnRepository, m_btnKernel
+        m_btnSearch, m_btnInstalled, m_btnSysUpdate, m_btnMaintenance,
+        m_btnFlatpak, m_btnRepository, m_btnKernel
     };
 
     const QStringList pageDefaults = {
@@ -191,7 +204,6 @@ void MainWindow::setupUi()
             for (int j = 0; j < navBtns.size(); ++j)
                 navBtns[j]->setChecked(j == i);
 
-            // For pages with live counts, show the real count if available
             if (i == 1 && m_installedPage->packageCount() > 0)
                 statusBar()->showMessage(
                     QStringLiteral("  Found %1 installed package(s)")
@@ -210,6 +222,7 @@ void MainWindow::toggleTheme()
     m_searchPage->updateIcons(m_isDark);
     m_installedPage->updateIcons(m_isDark);
     m_updatePage->updateIcons(m_isDark);
+    m_maintenancePage->updateIcons(m_isDark);
 }
 
 void MainWindow::updateIcons()
@@ -227,8 +240,6 @@ void MainWindow::updateIcons()
 
 void MainWindow::applyStyleSheet()
 {
-    // Set Fusion style once only — re-calling setStyle() on every theme switch
-    // reinstantiates the style engine across the entire widget tree.
     static bool styleSet = false;
     if (!styleSet) {
         qApp->setStyle("Fusion");
@@ -249,12 +260,6 @@ void MainWindow::applyStyleSheet()
     const QString headerFg     = m_isDark ? "#7ec8f0" : "#005a9e";
     const QString headerBorder = m_isDark ? "rgba(0,120,212,0.25)" : "rgba(0,120,212,0.20)";
 
-    // IMPORTANT: do NOT use "QWidget { ... }" as a base rule.
-    // That selector matches every cell-widget checkbox and button wrapper in the
-    // table (~2800 widgets) and forces Qt to re-style each one individually on
-    // every theme switch, which hangs the UI.
-    // Instead, scope all background/color rules to named object IDs or to
-    // specific widget subclasses that don't appear as anonymous cell wrappers.
     const QString qss =
         // ── Named containers only for base colours ───────────────────────────
         "QMainWindow { background-color: %1; color: %2; font-family: 'Noto Sans', 'Segoe UI', sans-serif; font-size: 13px; }"
@@ -377,10 +382,38 @@ void MainWindow::applyStyleSheet()
         "QPushButton#updateBtnStart  { background-color: #1a4c6e; color: #a8d8f0; border: none; font-size: 14px; }"
         "QPushButton#updateBtnStart:hover  { background-color: #1e5c84; }"
         "QPushButton#updateBtnCancel { background-color: #1a3a4c; color: #a8d8f0; border: none; font-size: 14px; }"
-        "QPushButton#updateBtnCancel:hover { background-color: #1e4a5c; }";
+        "QPushButton#updateBtnCancel:hover { background-color: #1e4a5c; }"
 
-    // Apply on the MainWindow only, not qApp — avoids cascading into
-    // every anonymous cell widget in QTableWidget viewports.
+        // ── Maintenance page ──────────────────────────────────────────────────
+        // Card buttons: styled panel that highlights on hover
+        "QPushButton#maintenanceCardBtn {"
+        "  background-color: %4;"
+        "  border: 1px solid %9;"
+        "  border-radius: 6px;"
+        "  text-align: left;"
+        "  padding: 0;"
+        "}"
+        "QPushButton#maintenanceCardBtn:hover {"
+        "  background-color: %5;"
+        "  border-color: #0078d4;"
+        "}"
+        "QPushButton#maintenanceCardBtn:pressed {"
+        "  background-color: %6;"
+        "}"
+        "QPushButton#maintenanceCardBtn:disabled {"
+        "  border-color: %8;"
+        "  opacity: 0.45;"
+        "}"
+        // Log and orphan frames
+        "QFrame#maintenanceLogFrame {"
+        "  background-color: %4;"
+        "  border: 1px solid %8;"
+        "  border-radius: 6px;"
+        "}"
+        // Scroll area inside task panel — transparent so cards show through
+        "QScrollArea { background-color: transparent; border: none; }"
+        "QScrollArea > QWidget > QWidget { background-color: transparent; }";
+
     setStyleSheet(qss
         .arg(bg,          // %1
              textPrimary, // %2

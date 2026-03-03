@@ -31,6 +31,9 @@ set(SOURCES
         Source/UI/Pages/UpdatePage.cpp
         Source/UI/Pages/UpdatePage.hpp
 
+        Source/UI/Pages/MaintenancePage.cpp
+        Source/UI/Pages/MaintenancePage.hpp
+
         Source/UI/UpdateConfirmDialog.cpp
         Source/UI/UpdateConfirmDialog.hpp
 
