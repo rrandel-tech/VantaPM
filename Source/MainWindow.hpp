@@ -8,6 +8,9 @@ class SearchPage;
 class InstalledPage;
 class UpdatePage;
 class MaintenancePage;
+class FlatpakPage;
+class RepositoryPage;
+class KernelPage;
 class SettingsDialog;
 
 class MainWindow : public QMainWindow
@@ -44,5 +47,8 @@ private:
     InstalledPage   *m_installedPage     = nullptr;
     UpdatePage      *m_updatePage        = nullptr;
     MaintenancePage *m_maintenancePage   = nullptr;
+    FlatpakPage     *m_flatpakPage       = nullptr;
+    RepositoryPage  *m_repositoryPage    = nullptr;
+    KernelPage      *m_kernelPage        = nullptr;
     SettingsDialog  *m_settingsDialog    = nullptr;
 };

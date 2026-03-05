@@ -34,8 +34,20 @@ set(SOURCES
         Source/UI/Pages/MaintenancePage.cpp
         Source/UI/Pages/MaintenancePage.hpp
 
+        Source/UI/Pages/FlatpakPage.cpp
+        Source/UI/Pages/FlatpakPage.hpp
+
+        Source/UI/Pages/RepositoryPage.cpp
+        Source/UI/Pages/RepositoryPage.hpp
+
+        Source/UI/Pages/KernelPage.cpp
+        Source/UI/Pages/KernelPage.hpp
+
         Source/UI/UpdateConfirmDialog.cpp
         Source/UI/UpdateConfirmDialog.hpp
+
+        Source/UI/KernelInstallDialog.cpp
+        Source/UI/KernelInstallDialog.hpp
 
         Source/Backend/Package.hpp
         Source/Backend/PacmanParser.cpp

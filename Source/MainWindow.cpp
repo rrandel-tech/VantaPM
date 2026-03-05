@@ -3,6 +3,9 @@
 #include "UI/Pages/InstalledPage.hpp"
 #include "UI/Pages/UpdatePage.hpp"
 #include "UI/Pages/MaintenancePage.hpp"
+#include "UI/Pages/FlatpakPage.hpp"
+#include "UI/Pages/RepositoryPage.hpp"
+#include "UI/Pages/KernelPage.hpp"
 #include "UI/SettingsDialog.hpp"
 #include "SettingsManager.hpp"
 
@@ -20,7 +23,6 @@ MainWindow::MainWindow(QWidget *parent)
     setMinimumSize(1100, 700);
     resize(1456, 816);
 
-    // Honour persisted theme before first paint
     m_isDark = (SettingsManager::instance().theme() == "dark");
 
     setupUi();
@@ -29,7 +31,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     statusBar()->showMessage("  Ready");
 
-    // Status bar — each page reports its own message
     connect(m_searchPage, &SearchPage::statusMessage,
             this, [this](const QString &msg) { statusBar()->showMessage(msg); });
 
@@ -48,7 +49,24 @@ MainWindow::MainWindow(QWidget *parent)
             statusBar()->showMessage(msg);
     });
 
-    // When the settings dialog switches theme, apply it live
+    connect(m_flatpakPage, &FlatpakPage::statusMessage,
+            this, [this](const QString &msg) {
+        if (m_pageStack->currentIndex() == 4)
+            statusBar()->showMessage(msg);
+    });
+
+    connect(m_repositoryPage, &RepositoryPage::statusMessage,
+            this, [this](const QString &msg) {
+        if (m_pageStack->currentIndex() == 5)
+            statusBar()->showMessage(msg);
+    });
+
+    connect(m_kernelPage, &KernelPage::statusMessage,
+            this, [this](const QString &msg) {
+        if (m_pageStack->currentIndex() == 6)
+            statusBar()->showMessage(msg);
+    });
+
     connect(m_settingsDialog, &SettingsDialog::themeChanged,
             this, [this](const QString &theme) {
         m_isDark = (theme == "dark");
@@ -58,9 +76,11 @@ MainWindow::MainWindow(QWidget *parent)
         m_installedPage->updateIcons(m_isDark);
         m_updatePage->updateIcons(m_isDark);
         m_maintenancePage->updateIcons(m_isDark);
+        m_flatpakPage->updateIcons(m_isDark);
+        m_repositoryPage->updateIcons(m_isDark);
+        m_kernelPage->updateIcons(m_isDark);
     });
 
-    // Auto-refresh: re-query the installed list on each timer tick
     connect(&SettingsManager::instance(), &SettingsManager::autoRefreshTriggered,
             this, [this]() {
         m_installedPage->loadPackages();
@@ -69,7 +89,6 @@ MainWindow::MainWindow(QWidget *parent)
             QStringLiteral("Package list refreshed"));
     });
 
-    // Defer the initial package load until after the event loop starts
     QTimer::singleShot(0, this, [this]() {
         m_installedPage->loadPackages();
     });
@@ -136,7 +155,6 @@ void MainWindow::setupUi()
     navLayout->addWidget(m_btnTheme);
     navLayout->addWidget(m_btnSettings);
 
-    // Construct dialog early so theme button can reference it
     m_settingsDialog = new SettingsDialog(this);
 
     connect(m_btnTheme, &QPushButton::clicked, this, [this]() {
@@ -165,16 +183,15 @@ void MainWindow::setupUi()
     m_maintenancePage = new MaintenancePage;
     m_pageStack->addWidget(m_maintenancePage);      // index 3
 
-    // Stub pages for Flatpak (4), Repository (5), Kernel (6)
-    for (int i = 4; i <= 6; ++i) {
-        auto *stub = new QWidget;
-        auto *l    = new QVBoxLayout(stub);
-        auto *lbl  = new QLabel("Coming soon");
-        lbl->setAlignment(Qt::AlignCenter);
-        lbl->setObjectName("emptyLabel");
-        l->addWidget(lbl);
-        m_pageStack->addWidget(stub);
-    }
+    m_flatpakPage = new FlatpakPage;
+    m_pageStack->addWidget(m_flatpakPage);          // index 4
+
+    m_repositoryPage = new RepositoryPage;
+    m_pageStack->addWidget(m_repositoryPage);       // index 5
+
+    m_kernelPage = new KernelPage;
+    m_pageStack->addWidget(m_kernelPage);           // index 6
+
 
     auto *contentWrapper = new QWidget;
     contentWrapper->setObjectName("contentWrapper");
@@ -223,6 +240,9 @@ void MainWindow::toggleTheme()
     m_installedPage->updateIcons(m_isDark);
     m_updatePage->updateIcons(m_isDark);
     m_maintenancePage->updateIcons(m_isDark);
+    m_flatpakPage->updateIcons(m_isDark);
+    m_repositoryPage->updateIcons(m_isDark);
+    m_kernelPage->updateIcons(m_isDark);
 }
 
 void MainWindow::updateIcons()
@@ -261,26 +281,21 @@ void MainWindow::applyStyleSheet()
     const QString headerBorder = m_isDark ? "rgba(0,120,212,0.25)" : "rgba(0,120,212,0.20)";
 
     const QString qss =
-        // ── Named containers only for base colours ───────────────────────────
         "QMainWindow { background-color: %1; color: %2; font-family: 'Noto Sans', 'Segoe UI', sans-serif; font-size: 13px; }"
         "#contentWrapper { background-color: %1; color: %2; font-family: 'Noto Sans', 'Segoe UI', sans-serif; font-size: 13px; }"
         "#navBar { background-color: %3; border-bottom: 1px solid %8; }"
 
-        // ── Nav buttons ──────────────────────────────────────────────────────
         "QPushButton#navBtn { background-color: transparent; color: %10; border: none; border-radius: 5px; padding: 5px 14px; font-size: 13px; }"
         "QPushButton#navBtn:hover { background-color: %5; color: %2; }"
         "QPushButton#navBtn:checked { background-color: %6; color: %2; border-bottom: 2px solid #0078d4; }"
         "QPushButton#iconBtn { background-color: transparent; border: none; border-radius: 5px; }"
         "QPushButton#iconBtn:hover { background-color: %5; }"
 
-        // ── Page title ───────────────────────────────────────────────────────
         "QLabel#pageTitle { font-size: 15px; font-weight: 600; color: %2; }"
 
-        // ── Search input ─────────────────────────────────────────────────────
         "QLineEdit#searchInput { background-color: %4; border: 1px solid %9; border-radius: 5px; padding: 6px 10px; color: %2; }"
         "QLineEdit#searchInput:focus { border-color: #0078d4; }"
 
-        // ── Action buttons ───────────────────────────────────────────────────
         "QPushButton#btnPrimary { background-color: #0078d4; color: #fff; border: none; border-radius: 5px; padding: 0 16px; }"
         "QPushButton#btnPrimary:hover { background-color: #1a8de0; }"
         "QPushButton#btnPrimary:pressed { background-color: #006cbf; }"
@@ -291,7 +306,6 @@ void MainWindow::applyStyleSheet()
         "QPushButton#btnRemove { background-color: %4; color: %2; border: 1px solid %9; border-radius: 5px; padding: 0 14px; }"
         "QPushButton#btnRemove:hover { background-color: #3a1e1e; border-color: #5a2a2a; color: #d4d4d4; }"
 
-        // ── Labels ───────────────────────────────────────────────────────────
         "QLabel#sectionLabel { color: %10; font-size: 12px; font-weight: 600; }"
         "QLabel#filterLabel  { color: %10; }"
         "QLabel#pkgName      { font-size: 13px; color: %2; }"
@@ -302,12 +316,10 @@ void MainWindow::applyStyleSheet()
         "QLabel#statusInstalled    { color: #4ec994; font-size: 12px; }"
         "QLabel#statusNotInstalled { color: %10; font-size: 12px; }"
 
-        // ── Combo boxes ──────────────────────────────────────────────────────
         "QComboBox#filterCombo { background-color: %4; border: 1px solid %9; border-radius: 4px; padding: 4px 8px; color: %2; min-width: 140px; }"
         "QComboBox#filterCombo::drop-down { border: none; width: 20px; }"
         "QComboBox#filterCombo QAbstractItemView { background-color: %3; border: 1px solid %9; color: %2; selection-background-color: #0078d4; }"
 
-        // ── Checkboxes / radios ──────────────────────────────────────────────
         "QCheckBox  { color: %2; spacing: 6px; }"
         "QRadioButton { color: %2; spacing: 6px; }"
         "QCheckBox::indicator  { width: 15px; height: 15px; border: 1px solid %10; border-radius: 3px; background: %4; }"
@@ -317,59 +329,48 @@ void MainWindow::applyStyleSheet()
         "QCheckBox:disabled { color: %10; }"
         "QCheckBox::indicator:disabled { border-color: #444; background: transparent; }"
 
-        // ── Row checkboxes (circular, inside table cell widgets) ──────────────
         "QCheckBox#rowCheck { spacing: 0; }"
         "QCheckBox#rowCheck::indicator { width: 15px; height: 15px; border: 1px solid #555; border-radius: 8px; background: transparent; }"
         "QCheckBox#rowCheck::indicator:checked { background: #0078d4; border-color: #0078d4; }"
         "QCheckBox#rowCheck::indicator:hover   { border-color: #0078d4; }"
 
-        // ── Package table ────────────────────────────────────────────────────
         "QTableWidget#packageTable { background-color: transparent; border: none; outline: none; gridline-color: transparent; }"
         "QTableWidget#packageTable::item { border: none; border-bottom: 1px solid %8; padding: 4px 6px; background-color: transparent; color: %2; font-size: 13px; }"
-        "QTableWidget#packageTable::item:selected { background-color: transparent; color: %2; }"
+        "QTableWidget#packageTable::item:selected { background-color: rgba(0,120,212,0.18); color: %2; }"
 
-        // ── Table header ─────────────────────────────────────────────────────
         "QHeaderView#pkgHeader::section { background-color: %11; color: %12; font-weight: 600; font-size: 12px; padding: 8px 6px; border: none; border-bottom: 1px solid %13; }"
         "QHeaderView#pkgHeader::section:first { border-top-left-radius: 4px; }"
         "QHeaderView#pkgHeader::section:last  { border-top-right-radius: 4px; }"
         "QHeaderView { background-color: transparent; border: none; }"
 
-        // ── Scrollbar ────────────────────────────────────────────────────────
         "QTableWidget#packageTable QScrollBar:vertical { background: transparent; width: 6px; margin: 0; }"
         "QTableWidget#packageTable QScrollBar::handle:vertical { background: #444; border-radius: 3px; min-height: 20px; }"
         "QTableWidget#packageTable QScrollBar::add-line:vertical,"
         "QTableWidget#packageTable QScrollBar::sub-line:vertical { height: 0; }"
 
-        // ── Output / panels ──────────────────────────────────────────────────
         "QWidget#outputPanel { background-color: transparent; border-top: 1px solid %8; }"
         "QFrame#separator    { background: %8; max-height: 1px; border: none; }"
         "QFrame#packageArea  { background-color: transparent; border: none; }"
 
-        // ── Status bar / dialog ──────────────────────────────────────────────
         "QStatusBar { background-color: #007acc; color: #fff; font-size: 12px; }"
         "QDialog { background-color: %3; color: %2; }"
 
-        // ── Settings dialog ──────────────────────────────────────────────────
         "QSpinBox#settingsSpin { background-color: %4; border: 1px solid %9; border-radius: 4px; padding: 3px 6px; color: %2; }"
         "QSpinBox#settingsSpin::up-button, QSpinBox#settingsSpin::down-button { background-color: %6; border: none; width: 16px; }"
         "QPushButton#themeBtnLeft  { background-color: %4; color: %10; border: 1px solid %9; border-right: none; border-top-left-radius: 4px; border-bottom-left-radius: 4px; padding: 0 14px; }"
         "QPushButton#themeBtnRight { background-color: %4; color: %10; border: 1px solid %9; border-top-right-radius: 4px; border-bottom-right-radius: 4px; padding: 0 14px; }"
         "QPushButton#themeBtnLeft:checked, QPushButton#themeBtnRight:checked { background-color: #0078d4; color: #fff; border-color: #0078d4; }"
 
-        // ── Splitter ─────────────────────────────────────────────────────────
         "QSplitter#mainSplitter::handle { background-color: %8; height: 2px; }"
         "QSplitter#mainSplitter::handle:hover { background-color: #0078d4; }"
 
-        // ── Terminal output view ──────────────────────────────────────────────
         "QPlainTextEdit#terminalView { background-color: %7; color: #8fbcbb; font-family: 'JetBrains Mono', 'Cascadia Code', monospace; font-size: 12px; border: none; padding: 6px; }"
 
-        // ── Update page ───────────────────────────────────────────────────────
         "QLabel#updateStatusIcon  { color: %10; font-size: 13px; }"
         "QLabel#updateStatusLabel { color: %10; font-size: 13px; }"
         "QLabel#updateEmptyIcon   { font-size: 36px; color: %10; }"
         "QLabel#repoBadge { background-color: %6; color: %2; border-radius: 4px; font-size: 11px; padding: 2px 6px; }"
 
-        // ── Update confirm dialog ─────────────────────────────────────────────
         "QWidget#updateSection { background-color: %3; }"
         "QLabel#updateDialogTitle { font-size: 15px; font-weight: 600; color: %2; }"
         "QLabel#updateDialogKey   { color: %10; font-size: 12px; }"
@@ -384,35 +385,77 @@ void MainWindow::applyStyleSheet()
         "QPushButton#updateBtnCancel { background-color: #1a3a4c; color: #a8d8f0; border: none; font-size: 14px; }"
         "QPushButton#updateBtnCancel:hover { background-color: #1e4a5c; }"
 
-        // ── Maintenance page ──────────────────────────────────────────────────
-        // Card buttons: styled panel that highlights on hover
         "QPushButton#maintenanceCardBtn {"
-        "  background-color: %4;"
-        "  border: 1px solid %9;"
-        "  border-radius: 6px;"
-        "  text-align: left;"
-        "  padding: 0;"
+        "  background-color: %4; border: 1px solid %9; border-radius: 6px; text-align: left; padding: 0;"
         "}"
-        "QPushButton#maintenanceCardBtn:hover {"
-        "  background-color: %5;"
-        "  border-color: #0078d4;"
-        "}"
-        "QPushButton#maintenanceCardBtn:pressed {"
-        "  background-color: %6;"
-        "}"
-        "QPushButton#maintenanceCardBtn:disabled {"
-        "  border-color: %8;"
-        "  opacity: 0.45;"
-        "}"
-        // Log and orphan frames
-        "QFrame#maintenanceLogFrame {"
-        "  background-color: %4;"
-        "  border: 1px solid %8;"
-        "  border-radius: 6px;"
-        "}"
-        // Scroll area inside task panel — transparent so cards show through
+        "QPushButton#maintenanceCardBtn:hover { background-color: %5; border-color: #0078d4; }"
+        "QPushButton#maintenanceCardBtn:pressed { background-color: %6; }"
+        "QPushButton#maintenanceCardBtn:disabled { border-color: %8; opacity: 0.45; }"
+        "QFrame#maintenanceLogFrame { background-color: %4; border: 1px solid %8; border-radius: 6px; }"
         "QScrollArea { background-color: transparent; border: none; }"
-        "QScrollArea > QWidget > QWidget { background-color: transparent; }";
+        "QScrollArea > QWidget > QWidget { background-color: transparent; }"
+
+        // ── Flatpak page ──────────────────────────────────────────────────────
+        "QWidget#flatpakDetailPane { background-color: transparent; }"
+        "QWidget#flatpakDetailBlock { background-color: %4; border: 1px solid %8; border-radius: 5px; }"
+        "QPushButton#flatpakActionBtn { background-color: %4; color: %2; border: 1px solid %9; border-radius: 5px; padding: 0 14px; text-align: left; }"
+        "QPushButton#flatpakActionBtn:hover { background-color: %5; }"
+        "QPushButton#flatpakActionBtn:disabled { color: %10; border-color: %8; }"
+        "QPushButton#flatpakUninstallBtn { background-color: %4; color: %2; border: 1px solid %9; border-radius: 5px; padding: 0 14px; text-align: left; }"
+        "QPushButton#flatpakUninstallBtn:hover { background-color: #3a1e1e; border-color: #5a2a2a; color: #d4d4d4; }"
+        "QPushButton#flatpakUninstallBtn:disabled { color: %10; border-color: %8; }"
+
+        // ── Repository page ───────────────────────────────────────────────────
+        // Detail pane header bar
+        "QWidget#repoDetailHeader { background-color: %3; border-bottom: 1px solid %8; }"
+
+        // Footer Add / Edit / Remove buttons — full-width, joined
+        "QPushButton#repoFooterBtnAdd {"
+        "  background-color: %4; color: %2;"
+        "  border: 1px solid %9;"
+        "  border-right: none;"
+        "  border-bottom-left-radius: 5px;"
+        "  border-top-left-radius: 5px;"
+        "  padding: 0 14px;"
+        "}"
+        "QPushButton#repoFooterBtnAdd:hover { background-color: %5; }"
+
+        "QPushButton#repoFooterBtnEdit {"
+        "  background-color: %4; color: %2;"
+        "  border: 1px solid %9;"
+        "  border-radius: 0;"
+        "  padding: 0 14px;"
+        "}"
+        "QPushButton#repoFooterBtnEdit:hover { background-color: %5; }"
+        "QPushButton#repoFooterBtnEdit:disabled { color: %10; }"
+
+        "QPushButton#repoFooterBtnRemove {"
+        "  background-color: %4; color: %2;"
+        "  border: 1px solid %9;"
+        "  border-left: none;"
+        "  border-bottom-right-radius: 5px;"
+        "  border-top-right-radius: 5px;"
+        "  padding: 0 14px;"
+        "}"
+        "QPushButton#repoFooterBtnRemove:hover { background-color: #3a1e1e; border-color: #5a2a2a; color: #d4d4d4; }"
+        "QPushButton#repoFooterBtnRemove:disabled { color: %10; }"
+
+        // ── Kernel page ───────────────────────────────────────────────────────
+        "QPushButton#kernelFooterBtnInstall {"
+        "  background-color: #1e3a52; color: #a8d8f0;"
+        "  border: none;"
+        "  border-right: 1px solid rgba(0,120,212,0.3);"
+        "  font-size: 13px;"
+        "}"
+        "QPushButton#kernelFooterBtnInstall:hover { background-color: #1e4c6e; }"
+        "QPushButton#kernelFooterBtnInstall:disabled { opacity: 0.5; }"
+        "QPushButton#kernelFooterBtnRemove {"
+        "  background-color: #1a2a3a; color: #a8d8f0;"
+        "  border: none;"
+        "  font-size: 13px;"
+        "}"
+        "QPushButton#kernelFooterBtnRemove:hover { background-color: #3a1e1e; color: #d4d4d4; }"
+        "QPushButton#kernelFooterBtnRemove:disabled { opacity: 0.5; }";
 
     setStyleSheet(qss
         .arg(bg,          // %1
