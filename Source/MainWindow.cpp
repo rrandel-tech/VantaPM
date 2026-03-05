@@ -89,6 +89,13 @@ MainWindow::MainWindow(QWidget *parent)
             QStringLiteral("Package list refreshed"));
     });
 
+    // React to settings changes (e.g. Flatpak enable/disable)
+    connect(&SettingsManager::instance(), &SettingsManager::settingsChanged,
+            this, &MainWindow::onSettingsChanged);
+
+    // Apply initial feature visibility
+    onSettingsChanged();
+
     QTimer::singleShot(0, this, [this]() {
         m_installedPage->loadPackages();
     });
@@ -97,6 +104,21 @@ MainWindow::MainWindow(QWidget *parent)
 QString MainWindow::iconPath(const QString &name) const
 {
     return QString(":/icons/%1/%2").arg(m_isDark ? "light" : "dark", name);
+}
+
+void MainWindow::onSettingsChanged()
+{
+    const bool flatpakOn = SettingsManager::instance().flatpakEnabled();
+
+    m_btnFlatpak->setVisible(flatpakOn);
+
+    // If the Flatpak page is currently shown and gets disabled, redirect to Search
+    if (!flatpakOn && m_pageStack->currentIndex() == 4) {
+        m_btnSearch->setChecked(true);
+        m_btnFlatpak->setChecked(false);
+        m_pageStack->setCurrentIndex(0);
+        statusBar()->showMessage("  Search packages");
+    }
 }
 
 void MainWindow::setupUi()
@@ -191,7 +213,6 @@ void MainWindow::setupUi()
 
     m_kernelPage = new KernelPage;
     m_pageStack->addWidget(m_kernelPage);           // index 6
-
 
     auto *contentWrapper = new QWidget;
     contentWrapper->setObjectName("contentWrapper");
@@ -306,35 +327,14 @@ void MainWindow::applyStyleSheet()
         "QPushButton#btnRemove { background-color: %4; color: %2; border: 1px solid %9; border-radius: 5px; padding: 0 14px; }"
         "QPushButton#btnRemove:hover { background-color: #3a1e1e; border-color: #5a2a2a; color: #d4d4d4; }"
 
-        "QLabel#sectionLabel { color: %10; font-size: 12px; font-weight: 600; }"
-        "QLabel#filterLabel  { color: %10; }"
-        "QLabel#pkgName      { font-size: 13px; color: %2; }"
-        "QLabel#pkgVersion   { color: %10; font-size: 12px; }"
-        "QLabel#pkgDesc      { color: %10; font-size: 12px; }"
-        "QLabel#emptyLabel   { color: %2; font-size: 14px; margin-top: 4px; }"
-        "QLabel#emptyHint    { color: %2; font-size: 12px; }"
-        "QLabel#statusInstalled    { color: #4ec994; font-size: 12px; }"
-        "QLabel#statusNotInstalled { color: %10; font-size: 12px; }"
+        "QLabel#sectionLabel { color: %10; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }"
+        "QLabel#pkgName    { color: %2;  font-weight: 600; font-size: 14px; }"
+        "QLabel#pkgVersion { color: %10; font-size: 12px; }"
+        "QLabel#pkgDesc    { color: %10; font-size: 12px; }"
+        "QLabel#filterLabel { color: %10; font-size: 12px; }"
 
-        "QComboBox#filterCombo { background-color: %4; border: 1px solid %9; border-radius: 4px; padding: 4px 8px; color: %2; min-width: 140px; }"
-        "QComboBox#filterCombo::drop-down { border: none; width: 20px; }"
-        "QComboBox#filterCombo QAbstractItemView { background-color: %3; border: 1px solid %9; color: %2; selection-background-color: #0078d4; }"
-
-        "QCheckBox  { color: %2; spacing: 6px; }"
-        "QRadioButton { color: %2; spacing: 6px; }"
-        "QCheckBox::indicator  { width: 15px; height: 15px; border: 1px solid %10; border-radius: 3px; background: %4; }"
-        "QRadioButton::indicator { width: 15px; height: 15px; border: 1px solid %10; border-radius: 7px; background: %4; }"
-        "QCheckBox::indicator:checked   { background: #0078d4; border-color: #0078d4; }"
-        "QRadioButton::indicator:checked { background: #0078d4; border-color: #0078d4; }"
-        "QCheckBox:disabled { color: %10; }"
-        "QCheckBox::indicator:disabled { border-color: #444; background: transparent; }"
-
-        "QCheckBox#rowCheck { spacing: 0; }"
-        "QCheckBox#rowCheck::indicator { width: 15px; height: 15px; border: 1px solid #555; border-radius: 8px; background: transparent; }"
-        "QCheckBox#rowCheck::indicator:checked { background: #0078d4; border-color: #0078d4; }"
-        "QCheckBox#rowCheck::indicator:hover   { border-color: #0078d4; }"
-
-        "QTableWidget#packageTable { background-color: transparent; border: none; outline: none; gridline-color: transparent; }"
+        "QTableWidget { background-color: %3; border: none; outline: none; gridline-color: transparent; }"
+        "QTableWidget#packageTable { background-color: %3; border: none; outline: none; gridline-color: transparent; }"
         "QTableWidget#packageTable::item { border: none; border-bottom: 1px solid %8; padding: 4px 6px; background-color: transparent; color: %2; font-size: 13px; }"
         "QTableWidget#packageTable::item:selected { background-color: rgba(0,120,212,0.18); color: %2; }"
 
@@ -406,10 +406,8 @@ void MainWindow::applyStyleSheet()
         "QPushButton#flatpakUninstallBtn:disabled { color: %10; border-color: %8; }"
 
         // ── Repository page ───────────────────────────────────────────────────
-        // Detail pane header bar
         "QWidget#repoDetailHeader { background-color: %3; border-bottom: 1px solid %8; }"
 
-        // Footer Add / Edit / Remove buttons — full-width, joined
         "QPushButton#repoFooterBtnAdd {"
         "  background-color: %4; color: %2;"
         "  border: 1px solid %9;"

@@ -21,6 +21,9 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override = default;
 
+private slots:
+    void onSettingsChanged();
+
 private:
     void setupUi();
     void applyStyleSheet();
